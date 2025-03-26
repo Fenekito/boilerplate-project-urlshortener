@@ -45,78 +45,41 @@ app.get("/api/hello", function (req, res) {
 });
 
 app.post("/api/shorturl", (req, res) => {
-  /** path's logic
-   * use the dns module to check if the input valid represents a valid url
-   *    valid
-   *    use the findOne() method to check if the database already contains a matching document
-   *        not found
-   *        use the estimatedDocumentCount() method to assess the number of items in the database
-   *        create a new entry, using the length to create a unique short_url value
-   *        save the entry
-   *        display pertinent information
-   *
-   *        found
-   *        display pertinent information
-   *
-   *    invalid
-   *    display an error message
-   */
-
-  // store in a variable the requested url
-  const urlRequest = req.body.url;
-
-  // retrieve the hostname removing from the url (the section between https:// and relative paths)
-  const hostname = urlRequest
-    .replace(/http[s]?\:\/\//, "")
-    .replace(/\/(.+)?/, "");
-
-  // use the hostname in the lookup() function
-  dns.lookup(hostname, (lookupErr, addresses) => {
-    if (lookupErr) {
-      console.log("lookup() error");
-    }
-
-    if (!addresses) {
-      return res.json({
-        error: "invalid URL",
-      });
+  const hostname = new URL(req.body.url).hostname;
+  dns.lookup(hostname, (err) => {
+    if (err) {
+      return res.json({ error: "invalid url" });
     } else {
-      Url.findOne(
-        {
-          original_url: urlRequest,
-        },
-        (findOneErr, urlFound) => {
-          if (findOneErr) {
-            console.log("findOne() error");
-          }
-          if (!urlFound) {
-            Url.estimatedDocumentCount((countErr, count) => {
-              if (countErr) {
-                return res.send("estimatedDocumentCount() error");
-              }
-              const url = new Url({
-                original_url: urlRequest,
-                short_url: count + 1,
-              });
-
-              url.save((saveErr, urlSaved) => {
-                if (saveErr) {
-                  return res.send("save() error");
-                }
-                res.json({
-                  original_url: urlSaved.original_url,
-                  short_url: urlSaved.short_url,
-                });
-              });
-            });
-          } else {
-            res.json({
-              original_url: urlFound.original_url,
-              short_url: urlFound.short_url,
-            });
-          }
+      Url.findOne({ original_url: req.body.url }, (findOneErr, urlFound) => {
+        if (findOneErr) {
+          console.log("findOne() error");
         }
-      );
+        if (!urlFound) {
+          Url.countDocuments({}, (countErr, count) => {
+            if (countErr) {
+              console.log("countDocuments() error");
+            }
+            const newUrl = new Url({
+              original_url: req.body.url,
+              short_url: count + 1,
+            });
+            newUrl.save((saveErr, savedUrl) => {
+              if (saveErr) {
+                console.log("save() error");
+              }
+              res.json({
+                original_url: savedUrl.original_url,
+                short_url: savedUrl.short_url,
+              });
+            });
+          });
+        } else {
+          res.json({
+            original_url: urlFound.original_url,
+            short_url: urlFound.short_url,
+          });
+        }
+      });
     }
   });
 });
@@ -128,16 +91,13 @@ app.get("/api/shorturl/:shorturl", function (req, res) {
       if (findOneErr) {
         console.log("findOne() error");
       }
-      // findOne() returns either _null_ or _a document_
-      // depending on whether or not a document matches the specified property value pair(s)
-      // if null, create a new document
       if (!urlFound) {
         res.json({ error: "No short URL found for given input" });
       } else {
         res.redirect(urlFound.original_url);
-      } // url found block
+      }
     }
-  ); // findOne() block
+  );
 });
 
 app.listen(port, function () {
